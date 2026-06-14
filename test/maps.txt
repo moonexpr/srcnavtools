@@ -1,0 +1,21 @@
+# Test maps from https://github.com/danyisill/tf2-maps
+#
+# Columns:  <map_name>  <has_reference_nav>
+#
+# Maps marked "yes" ship an upstream .nav in that repo (committed under
+# test/reference/), so the harness compares our generated mesh against it.
+# Maps marked "no" have only a .bsp, so generation is self-validated only
+# (valid magic, area_count > 0, stored bsp_size matches the real bsp).
+
+# --- maps with an upstream reference nav (full comparison) ---
+cp_orange_x3        yes
+cp_orange_z4_v3     yes
+mvm_mountain_b3     yes
+vsh_crevice_b2      yes
+
+# --- additional maps (self-validated generation only) ---
+arena_badlands_v2   no
+arena_granary_v2    no
+arena_sawmill_v2    no
+arena_watchtower_b2 no
+ctf_convoy_v2       no

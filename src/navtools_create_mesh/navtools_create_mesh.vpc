@@ -1,0 +1,57 @@
+//-----------------------------------------------------------------------------
+//	NAVTOOLS_CREATE_MESH.VPC
+//
+//	Project script for the headless navigation-mesh generator.
+//
+//	This is the canonical build path: it produces a console executable linked
+//	against the Steam Runtime, the same way the SDK builds its own tools. It is
+//	wired into the SDK solution by scripts/integrate_sdk.sh (which copies this
+//	project into the vendored SDK tree and registers it), after which
+//	./buildallprojects builds it alongside everything else.
+//
+//	The engine itself (engine.so / filesystem_stdio.so / the game's server
+//	module that contains the nav generation code) is loaded at RUNTIME via the
+//	dedicated-server API, so it is intentionally NOT linked here.
+//
+//	NOTE: this project dir lives one level under src/ (src/navtools_create_mesh),
+//	so SRCDIR is just "..".
+//-----------------------------------------------------------------------------
+
+$Macro SRCDIR		".."
+$Macro OUTBINDIR	"$SRCDIR\..\game\bin"
+
+$Include "$SRCDIR\vpc_scripts\source_exe_con_base.vpc"
+
+$Configuration
+{
+	$Compiler
+	{
+		$AdditionalIncludeDirectories	"$BASE,$SRCDIR\public,$SRCDIR\public\tier0,$SRCDIR\public\tier1,$SRCDIR\common,.\"
+	}
+}
+
+$Project "navtools_create_mesh"
+{
+	$Folder	"Source Files"
+	{
+		$File	"main.cpp"
+		$File	"navgen_app.cpp"
+		$File	"navgen_options.cpp"
+		$File	"navgen_spew.cpp"
+	}
+
+	$Folder	"Header Files"
+	{
+		$File	"navgen_app.h"
+		$File	"navgen_options.h"
+		$File	"navgen_spew.h"
+	}
+
+	$Folder "Link Libraries"
+	{
+		// tier0 / tier1 / vstdlib are pulled in by the base exe script.
+		$Lib appframework
+		$Lib mathlib
+		$Lib tier2
+	}
+}

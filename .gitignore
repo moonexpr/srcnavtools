@@ -1,0 +1,18 @@
+# Build output
+/build/
+*.o
+*.a
+*.so
+
+# Test working dir (downloaded .bsp maps, generated .nav, logs)
+/test/work/
+
+# Downloaded maps anywhere
+*.bsp
+
+# Editor / OS
+*.swp
+.DS_Store
+compile_commands.json
+
+# Note: test/reference/*.nav are committed golden files (kept on purpose).
