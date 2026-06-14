@@ -10,6 +10,13 @@ game* — no client, no renderer, no sound. It links the SDK's tier/appframework
 libraries, loads only the dedicated engine at runtime, drives the stock
 `nav_generate` console command, and writes the `.nav` to disk.
 
+The second is **`navtools_analyze_graph`**: a pure-offline analyzer (no engine
+needed) that fully parses a `.nav` and reports quality/optimization metrics —
+attribute & size/aspect distributions, drop/jump validation, the connectivity
+graph (components, islands, one-way traps, dead ends, articulation points,
+bridges, betweenness chokepoints, diameter) and a 0–100 health score. See
+[docs/NAV_METRICS.md](docs/NAV_METRICS.md) for the research behind the metrics.
+
 The generation algorithm itself is the unmodified Valve code in
 [`game/server/nav_generate.cpp`](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/server/nav_generate.cpp)
 — this tool is the *host* that runs it headlessly.
@@ -123,6 +130,20 @@ parses it and can compare two meshes:
 python3 scripts/nav_inspect.py test/reference/cp_orange_x3.nav
 python3 scripts/nav_inspect.py --compare generated.nav test/reference/cp_orange_x3.nav
 ```
+
+`scripts/navtools_analyze_graph.py` analyzes a mesh's quality and connectivity
+graph fully offline, and can compare two meshes for A/B generation tuning:
+
+```bash
+python3 scripts/navtools_analyze_graph.py test/reference/cp_orange_x3.nav --bsp test/work/cp_orange_x3.bsp
+python3 scripts/navtools_analyze_graph.py --compare a.nav b.nav        # metric-vector diff
+python3 scripts/navtools_analyze_graph.py mesh.nav --json              # machine-readable
+```
+
+It parses the full `.nav` (auto-detecting TF2's per-area data) and emits counts,
+attribute/size/aspect distributions, drop/jump red flags, the graph suite, and a
+health score. Verified against the four reference meshes (e.g. it independently
+flags `mvm_mountain_b3` as stale and finds the orphan area in `vsh_crevice_b2`).
 
 `scripts/test_maps.sh` is the end-to-end harness: it downloads maps from
 [danyisill/tf2-maps](https://github.com/danyisill/tf2-maps), generates a mesh
