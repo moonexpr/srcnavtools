@@ -136,6 +136,52 @@ time (via `rpath`).
   SDK solution by `scripts/integrate_sdk.sh` and built against the SteamRT
   *sniper* container. Required for anything distributed on Steam.
 
+## Multicore batch generation
+
+A single map's nav build is **single-threaded by design**: `nav_generate.cpp`
+forces `host_thread_mode 0` ("need non-threaded server for light calcs") because
+threading corrupts the lighting/analysis pass. So there is no safe way to make
+one map's generation multicore.
+
+The way to use many cores is **batch parallelism across maps**:
+`scripts/navtools_batch.sh` runs up to `-j N` independent `navtools_create_mesh`
+processes at once — one headless engine instance per map, each on its own UDP
+port (`-port baseport+i`) — and aggregates results. This is ideal for
+regenerating a dedicated server's whole map rotation. Each job is a separate
+process, so it scales linearly with cores until disk/IO-bound.
+
+## 32-bit dedicated server build
+
+The default build is 64-bit (the vendored `source-sdk-2013` fork is 64-bit).
+For a classic **32-bit** Linux dedicated server, the Makefile has `ARCH=32`,
+which targets the vendored classic SDK (`external/source-sdk-2013-classic`, the
+repo's `singleplayer` branch — the last 32-bit layout, with 32-bit
+`libtier0.so`/`libvstdlib.so`/`tier1.a`/`mathlib.a`).
+
+Our tool code compiles cleanly as `-m32` and links every classic 32-bit lib
+**except two things the classic SDK leaves to the engine-provided `srcds`
+launcher binary and never ships for a standalone Linux launcher**:
+
+1. **`appframework` (CAppSystemGroup)** — shipped only as a Windows `.lib` +
+   headers; there is no Linux `appframework.a` and no source in the SDK. Our
+   bootstrap needs `CAppSystemGroup` (the `ModInfo_t.m_pParentAppSystemGroup`
+   the engine requires).
+2. **`g_pMemAlloc`** — the classic 32-bit `libtier0.so` does not export it
+   (the 64-bit fork does), so the allocator symbol must come from elsewhere.
+
+So `make ARCH=32` requires you to supply a 32-bit `appframework.a` (build the
+SDK's `appframework` project in a full classic-SDK toolchain) and, if needed,
+the allocator via `EXTRA_LDLIBS`:
+
+```bash
+make ARCH=32 APPFRAMEWORK=/path/to/appframework.a [EXTRA_LDLIBS=-l...]
+# -> build/navtools_create_mesh32   (run against a 32-bit srcds via LD_LIBRARY_PATH)
+```
+
+Everything else — the `-m32` toolchain, classic headers, and tier0/vstdlib/
+tier1/mathlib linkage — is verified. The engine (`engine.so`) is still
+`dlopen`'d at runtime from the 32-bit `srcds`, exactly as in the 64-bit build.
+
 ## Tuning notes / caveats
 
 - `settleFrames` (default 120) is a simple time gate after `map` before

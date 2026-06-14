@@ -2,3 +2,7 @@
 	path = external/source-sdk-2013
 	url = https://github.com/ValveSoftware/source-sdk-2013.git
 	branch = master
+[submodule "external/source-sdk-2013-classic"]
+	path = external/source-sdk-2013-classic
+	url = https://github.com/ValveSoftware/source-sdk-2013.git
+	branch = singleplayer

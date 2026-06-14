@@ -145,6 +145,29 @@ attribute/size/aspect distributions, drop/jump red flags, the graph suite, and a
 health score. Verified against the four reference meshes (e.g. it independently
 flags `mvm_mountain_b3` as stale and finds the orphan area in `vsh_crevice_b2`).
 
+### Multicore batch & 32-bit
+
+`scripts/navtools_batch.sh` generates many maps at once across cores — one
+headless engine per map (each on its own port), capped at `-j N`. A single map's
+nav build is single-threaded by design (Valve forces `host_thread_mode 0` for
+correct lighting), so batch-across-maps is the way to use all cores, e.g. for a
+server's whole rotation:
+
+```bash
+./scripts/navtools_batch.sh -basedir <SDKBase> -game tf -j $(nproc) -dir mymaps/
+```
+
+For a classic **32-bit** dedicated server, `make ARCH=32` targets the vendored
+classic SDK (`external/source-sdk-2013-classic`). Our code compiles `-m32` and
+links the classic 32-bit tier libs; the classic SDK omits a Linux `appframework`
+and `g_pMemAlloc`, so supply a 32-bit `appframework.a`:
+
+```bash
+make ARCH=32 APPFRAMEWORK=/path/to/appframework.a   # -> build/navtools_create_mesh32
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the details/caveats.
+
 `scripts/test_maps.sh` is the end-to-end harness: it downloads maps from
 [danyisill/tf2-maps](https://github.com/danyisill/tf2-maps), generates a mesh
 for each, and compares against the upstream reference `.nav` where one exists
