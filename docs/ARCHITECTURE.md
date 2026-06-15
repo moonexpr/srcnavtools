@@ -113,7 +113,8 @@ server module and is loaded at runtime. The tool links only the SDK
 infrastructure libraries:
 
 - `libtier0.so`, `libvstdlib.so` — prebuilt, shared (committed in the SDK).
-- `appframework.a` — prebuilt, static (`CAppSystemGroup`, module loading).
+- `CAppSystemGroup` / module loading — our own `appframework_min.cpp` (no
+  prebuilt `appframework.a`); see "Self-contained appframework" below.
 - `tier1` / `mathlib` — compiled from the SDK sources by the Makefile (the SDK
   drop ships them as sources, not prebuilt `.a`), and provide `Sys_LoadModule`,
   the `V_*` string utilities, containers, etc.
@@ -150,37 +151,50 @@ port (`-port baseport+i`) — and aggregates results. This is ideal for
 regenerating a dedicated server's whole map rotation. Each job is a separate
 process, so it scales linearly with cores until disk/IO-bound.
 
+## Self-contained appframework (no prebuilt appframework.a)
+
+`CAppSystemGroup` (the module-loading / connect-init-shutdown lifecycle, and the
+`ModInfo_t.m_pParentAppSystemGroup` the engine requires) is **reimplemented** in
+`appframework_min.cpp`, matching `public/appframework/IAppSystemGroup.h`
+(identical members + signatures). So neither build links a prebuilt
+`appframework.a`. This was necessary because the SDKs ship no Linux appframework
+**source**, and the classic SDK ships no Linux appframework library at all; it
+also makes the 64-bit build dependency-free. The reimplementation drives the
+documented order (Create → Connect → PreInit → Init → Main → Shutdown →
+PostShutdown → Disconnect → Destroy) and its factory resolves interfaces by name
+across registered systems (plus each system's `QueryInterface`, for modules that
+expose several interfaces such as filesystem's `VFileSystem022` + `VBaseFileSystem011`).
+
 ## 32-bit dedicated server build
 
 The default build is 64-bit (the vendored `source-sdk-2013` fork is 64-bit).
-For a classic **32-bit** Linux dedicated server, the Makefile has `ARCH=32`,
-which targets the vendored classic SDK (`external/source-sdk-2013-classic`, the
-repo's `singleplayer` branch — the last 32-bit layout, with 32-bit
-`libtier0.so`/`libvstdlib.so`/`tier1.a`/`mathlib.a`).
-
-Our tool code compiles cleanly as `-m32` and links every classic 32-bit lib
-**except two things the classic SDK leaves to the engine-provided `srcds`
-launcher binary and never ships for a standalone Linux launcher**:
-
-1. **`appframework` (CAppSystemGroup)** — shipped only as a Windows `.lib` +
-   headers; there is no Linux `appframework.a` and no source in the SDK. Our
-   bootstrap needs `CAppSystemGroup` (the `ModInfo_t.m_pParentAppSystemGroup`
-   the engine requires).
-2. **`g_pMemAlloc`** — the classic 32-bit `libtier0.so` does not export it
-   (the 64-bit fork does), so the allocator symbol must come from elsewhere.
-
-So `make ARCH=32` requires you to supply a 32-bit `appframework.a` (build the
-SDK's `appframework` project in a full classic-SDK toolchain) and, if needed,
-the allocator via `EXTRA_LDLIBS`:
+For a classic **32-bit** Linux dedicated server, `make ARCH=32` targets the
+vendored classic SDK (`external/source-sdk-2013-classic`, the repo's
+`singleplayer` branch — the last 32-bit layout, with 32-bit
+`libtier0.so`/`libvstdlib.so`/`tier1.a`/`mathlib.a`). It is **self-contained**:
 
 ```bash
-make ARCH=32 APPFRAMEWORK=/path/to/appframework.a [EXTRA_LDLIBS=-l...]
-# -> build/navtools_create_mesh32   (run against a 32-bit srcds via LD_LIBRARY_PATH)
+make ARCH=32          # needs g++-multilib  -> build/navtools_create_mesh32
 ```
 
-Everything else — the `-m32` toolchain, classic headers, and tier0/vstdlib/
-tier1/mathlib linkage — is verified. The engine (`engine.so`) is still
-`dlopen`'d at runtime from the 32-bit `srcds`, exactly as in the 64-bit build.
+Two classic-SDK Linux gaps (normally filled by Valve's `srcds` launcher binary)
+are handled in-tree so no external inputs are needed:
+
+1. **appframework** — provided by `appframework_min.cpp` (above).
+2. **`g_pMemAlloc`** — the classic 32-bit `libtier0.so` doesn't export it (the
+   64-bit one does), so `navgen_memalloc.cpp` supplies a malloc-backed
+   `IMemAlloc` (compiled only for `ARCH=32`, gated by `NAVTOOLS_PROVIDE_MEMALLOC`).
+   `navgen_compat.cpp` additionally restores the `__*_finite` math aliases the
+   prebuilt archives expect (glibc ≥ 2.31 removed them).
+
+**Verified here:** the 32-bit binary builds, links self-contained, loads the
+classic 32-bit `libtier0`/`vstdlib` at runtime, runs our reimplemented
+`CAppSystemGroup` lifecycle through the module-load attempt, and `--help`
+works — i.e. the appframework reimpl and allocator shim are exercised without
+crashing. **Not verifiable here:** actual generation (needs a 32-bit `srcds`
+engine runtime) and the engine's acceptance of the reimplemented group during a
+real map load. The engine (`engine.so`) is still `dlopen`'d at runtime from the
+32-bit `srcds`, as in the 64-bit build.
 
 ## Tuning notes / caveats
 

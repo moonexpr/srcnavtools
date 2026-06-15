@@ -158,15 +158,18 @@ server's whole rotation:
 ```
 
 For a classic **32-bit** dedicated server, `make ARCH=32` targets the vendored
-classic SDK (`external/source-sdk-2013-classic`). Our code compiles `-m32` and
-links the classic 32-bit tier libs; the classic SDK omits a Linux `appframework`
-and `g_pMemAlloc`, so supply a 32-bit `appframework.a`:
+classic SDK (`external/source-sdk-2013-classic`) and is **self-contained** (needs
+`g++-multilib`):
 
 ```bash
-make ARCH=32 APPFRAMEWORK=/path/to/appframework.a   # -> build/navtools_create_mesh32
+make ARCH=32          # -> build/navtools_create_mesh32
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the details/caveats.
+`CAppSystemGroup` is reimplemented in-tree (`appframework_min.cpp`), so no
+prebuilt `appframework.a` is needed on either arch; the 32-bit build also
+supplies `g_pMemAlloc` and the `__*_finite` math aliases the old classic
+archives expect. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for what's
+verified vs. needs a runtime.
 
 `scripts/test_maps.sh` is the end-to-end harness: it downloads maps from
 [danyisill/tf2-maps](https://github.com/danyisill/tf2-maps), generates a mesh

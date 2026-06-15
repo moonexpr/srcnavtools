@@ -9,19 +9,16 @@
 #                         #   appframework.a. Fully builds + links here.
 #                         #   -> build/navtools_create_mesh
 #
-#    make ARCH=32 APPFRAMEWORK=/path/to/appframework.a
-#                         # 32-bit: classic SDK (external/source-sdk-2013-classic,
+#    make ARCH=32           # 32-bit: classic SDK (external/source-sdk-2013-classic,
 #                         #   "singleplayer" branch). Links the classic 32-bit
 #                         #   tier0/vstdlib/tier1/mathlib. Needs g++-multilib.
 #                         #   -> build/navtools_create_mesh32
 #
-#  NOTE on 32-bit: the classic SDK ships NO Linux appframework (CAppSystemGroup)
-#  and its libtier0.so does not export g_pMemAlloc -- the engine-provided srcds
-#  launcher normally supplies both. So a standalone 32-bit launcher needs a
-#  32-bit appframework.a (point APPFRAMEWORK at one, e.g. built from the SDK's
-#  appframework project) and the allocator symbol (EXTRA_LDLIBS). Everything
-#  else (our code + the classic tier libs) compiles and links; see
-#  docs/ARCHITECTURE.md ("32-bit dedicated server build").
+#  Both arches are self-contained: CAppSystemGroup is reimplemented in
+#  appframework_min.cpp (the SDKs ship no Linux appframework source), so no
+#  prebuilt appframework.a is needed. The 32-bit build also provides g_pMemAlloc
+#  via navgen_memalloc.cpp, because the classic Linux libtier0.so does not export
+#  it (the 64-bit libtier0.so does). See docs/ARCHITECTURE.md.
 #
 #  Canonical Steam-Runtime build instead: scripts/build_steamrt.sh.
 # ===========================================================================
@@ -29,17 +26,20 @@
 ARCH      ?= 64
 CXX       ?= g++
 BUILD_DIR := build
+SRC_DIR   := src/navtools_create_mesh
 
 ifeq ($(ARCH),32)
   SDK        ?= external/source-sdk-2013-classic
   SDK_SRC    := $(SDK)/src
   SDK_LIB    ?= $(SDK_SRC)/lib/public/linux32
   ARCHFLAGS  := -m32
-  ARCHDEFS   :=
+  ARCHDEFS   := -DNAVTOOLS_PROVIDE_MEMALLOC
   TARGET     := $(BUILD_DIR)/navtools_create_mesh32
-  # classic SDK ships tier1/mathlib prebuilt as 32-bit archives
+  # classic SDK ships tier1/mathlib prebuilt as 32-bit archives. We provide
+  # CAppSystemGroup (appframework_min.cpp) and g_pMemAlloc (navgen_memalloc.cpp)
+  # ourselves, since the classic SDK ships neither on Linux.
   STATIC_LIBS := $(SDK_LIB)/tier1.a $(SDK_LIB)/mathlib.a
-  APPFRAMEWORK ?=
+  ARCH_EXTRA_SRCS := $(SRC_DIR)/navgen_memalloc.cpp $(SRC_DIR)/navgen_compat.cpp
   BUILD_TIER  := 0
 else
   SDK        ?= external/source-sdk-2013
@@ -48,12 +48,12 @@ else
   ARCHFLAGS  := -m64
   ARCHDEFS   := -DPLATFORM_64BITS
   TARGET     := $(BUILD_DIR)/navtools_create_mesh
-  # 64-bit fork ships appframework.a prebuilt; tier1/mathlib built from source
-  STATIC_LIBS := $(SDK_LIB)/appframework.a $(BUILD_DIR)/tier1.a $(BUILD_DIR)/mathlib.a
+  # tier1/mathlib built from source; CAppSystemGroup provided by
+  # appframework_min.cpp (g_pMemAlloc comes from the 64-bit libtier0.so).
+  STATIC_LIBS := $(BUILD_DIR)/tier1.a $(BUILD_DIR)/mathlib.a
+  ARCH_EXTRA_SRCS :=
   BUILD_TIER  := 1
 endif
-
-SRC_DIR := src/navtools_create_mesh
 
 INCLUDES := \
 	-I$(SRC_DIR) \
@@ -76,7 +76,8 @@ CXXFLAGS += $(ARCHFLAGS) -std=c++11 -fpermissive -fno-strict-aliasing -fPIC \
 
 OBJDIR := $(BUILD_DIR)/tool$(ARCH)
 TOOL_SRCS := $(SRC_DIR)/main.cpp $(SRC_DIR)/navgen_app.cpp \
-             $(SRC_DIR)/navgen_options.cpp $(SRC_DIR)/navgen_spew.cpp
+             $(SRC_DIR)/navgen_options.cpp $(SRC_DIR)/navgen_spew.cpp \
+             $(SRC_DIR)/appframework_min.cpp $(ARCH_EXTRA_SRCS)
 TOOL_OBJS := $(patsubst $(SRC_DIR)/%.cpp,$(OBJDIR)/%.o,$(TOOL_SRCS))
 
 TIER1_SRCS   := $(filter-out $(SDK_SRC)/tier1/fileio.cpp,$(wildcard $(SDK_SRC)/tier1/*.cpp))
@@ -85,7 +86,7 @@ TIER1_OBJS   := $(patsubst $(SDK_SRC)/tier1/%.cpp,$(BUILD_DIR)/tier1/%.o,$(TIER1
 MATHLIB_OBJS := $(patsubst $(SDK_SRC)/mathlib/%.cpp,$(BUILD_DIR)/mathlib/%.o,$(MATHLIB_SRCS))
 
 LDFLAGS  += $(ARCHFLAGS) -L$(SDK_LIB) -Wl,-rpath,'$$ORIGIN' -Wl,-rpath,$(abspath $(SDK_LIB))
-LDGROUP  := -Wl,--start-group $(STATIC_LIBS) $(APPFRAMEWORK) -Wl,--end-group
+LDGROUP  := -Wl,--start-group $(STATIC_LIBS) -Wl,--end-group
 LDLIBS   += -ltier0 -lvstdlib $(EXTRA_LDLIBS) -ldl -lpthread
 
 .PHONY: all clean check-sdk dirs
@@ -121,14 +122,6 @@ check-sdk:
 		echo "error: SDK not found at $(SDK_SRC). Run: git submodule update --init --recursive"; exit 1; }
 	@test -f "$(SDK_LIB)/libtier0.so" || { \
 		echo "error: $(SDK_LIB)/libtier0.so missing (incomplete submodule checkout)."; exit 1; }
-ifeq ($(ARCH),32)
-	@test -n "$(APPFRAMEWORK)" || { \
-		echo "error: ARCH=32 needs a 32-bit appframework.a (the classic SDK omits it on Linux)."; \
-		echo "       Build the SDK's appframework project, then:"; \
-		echo "         make ARCH=32 APPFRAMEWORK=/path/to/appframework.a [EXTRA_LDLIBS=-l...]"; \
-		echo "       See docs/ARCHITECTURE.md -> '32-bit dedicated server build'."; exit 1; }
-	@test -f "$(APPFRAMEWORK)" || { echo "error: APPFRAMEWORK not found: $(APPFRAMEWORK)"; exit 1; }
-endif
 
 clean:
 	rm -rf $(BUILD_DIR)
